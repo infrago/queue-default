@@ -1,11 +1,14 @@
 package bus
 
-import "github.com/infrago/queue"
+import (
+	"github.com/infrago/infra"
+	"github.com/infrago/queue"
+)
 
 func Driver() queue.Driver {
 	return &defaultDriver{}
 }
 
 func init() {
-	queue.Register("default", Driver())
+	infra.Register("default", Driver())
 }

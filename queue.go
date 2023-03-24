@@ -90,7 +90,7 @@ func (connect *defaultConnect) Start() error {
 
 					if res.Retry {
 						//直接重发，暂不处理延时，不可靠
-						connect.Enqueue(msg.name, msg.data)
+						connect.Publish(msg.name, msg.data)
 					}
 
 				case <-connect.runner.Stop():
@@ -116,14 +116,14 @@ func (connect *defaultConnect) Stop() error {
 	return nil
 }
 
-func (connect *defaultConnect) Enqueue(name string, data []byte) error {
+func (connect *defaultConnect) Publish(name string, data []byte) error {
 	if qqq, ok := connect.queues[name]; ok {
 		qqq <- &defaultMsg{name, data}
 	}
 	return nil
 }
 
-func (connect *defaultConnect) DeferredEnqueue(name string, data []byte, delay time.Duration) error {
+func (connect *defaultConnect) DeferredPublish(name string, data []byte, delay time.Duration) error {
 	time.AfterFunc(delay, func() {
 		if qqq, ok := connect.queues[name]; ok {
 			qqq <- &defaultMsg{name, data}

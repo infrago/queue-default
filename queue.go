@@ -30,8 +30,9 @@ type (
 	}
 
 	defaultMsg struct {
-		name string
-		data []byte
+		name     string
+		data     []byte
+		attempts int
 	}
 )
 
@@ -63,11 +64,11 @@ func (connect *defaultConnect) Close() error {
 // 以后要支持其它总线驱动的时候，再说
 // 还有种可能，就是，nats中队列单独定义使用jetstream做持久的时候
 // 那也可以同一个Register方法，定义实体来注册，加入Type或其它方式来区分
-func (connect *defaultConnect) Register(info queue.Info) error {
+func (connect *defaultConnect) Register(name string) error {
 	connect.mutex.Lock()
 	defer connect.mutex.Unlock()
 
-	connect.queues[info.Name] = make(chan *defaultMsg, 10)
+	connect.queues[name] = make(chan *defaultMsg, 10)
 
 	return nil
 }
@@ -84,13 +85,13 @@ func (connect *defaultConnect) Start() error {
 				select {
 				case msg := <-cccc:
 					req := queue.Request{
-						msg.name, msg.data, 1, time.Now(),
+						msg.name, msg.data, msg.attempts, time.Now(),
 					}
 					res := connect.instance.Serve(req)
 
 					if res.Retry {
-						//直接重发，暂不处理延时，不可靠
-						connect.Publish(msg.name, msg.data)
+						msg.attempts++
+						connect.publising(msg, res.Delay)
 					}
 
 				case <-connect.runner.Stop():
@@ -116,20 +117,27 @@ func (connect *defaultConnect) Stop() error {
 	return nil
 }
 
-func (connect *defaultConnect) Publish(name string, data []byte) error {
-	if qqq, ok := connect.queues[name]; ok {
-		qqq <- &defaultMsg{name, data}
+func (connect *defaultConnect) publising(msg *defaultMsg, delays ...time.Duration) error {
+	if len(delays) > 0 {
+		if qqq, ok := connect.queues[msg.name]; ok {
+			time.AfterFunc(delays[0], func() {
+				qqq <- msg
+			})
+		}
+	} else {
+		if qqq, ok := connect.queues[msg.name]; ok {
+			qqq <- msg
+		}
 	}
 	return nil
 }
 
+func (connect *defaultConnect) Publish(name string, data []byte) error {
+	return connect.publising(&defaultMsg{name, data, 1})
+}
+
 func (connect *defaultConnect) DeferredPublish(name string, data []byte, delay time.Duration) error {
-	time.AfterFunc(delay, func() {
-		if qqq, ok := connect.queues[name]; ok {
-			qqq <- &defaultMsg{name, data}
-		}
-	})
-	return nil
+	return connect.publising(&defaultMsg{name, data, 1}, delay)
 }
 
 //------------------------- 默认队列驱动 end --------------------------
